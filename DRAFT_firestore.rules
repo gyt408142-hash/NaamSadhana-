@@ -1,0 +1,83 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global Safety Net - Default Deny Catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Validation helper for User State
+    function isValidUser(data) {
+      return data.keys().hasAll([
+        'currentMantra',
+        'currentCount',
+        'goal',
+        'dailyCount',
+        'lifetimeCount',
+        'streak',
+        'lastChantedDate',
+        'mantraStats',
+        'history'
+      ]) &&
+      data.keys().size() == 9 &&
+      data.currentMantra is map &&
+      data.currentMantra.keys().hasAll(['id', 'name']) &&
+      data.currentMantra.id is string && data.currentMantra.id.size() <= 128 &&
+      data.currentMantra.name is string && data.currentMantra.name.size() <= 128 &&
+      (
+        !data.currentMantra.keys().contains('translation') || 
+        (data.currentMantra.translation is string && data.currentMantra.translation.size() <= 256)
+      ) &&
+      (
+        !data.currentMantra.keys().contains('isCustom') || 
+        data.currentMantra.isCustom is bool
+      ) &&
+      data.currentCount is int && data.currentCount >= 0 &&
+      data.goal is int && data.goal >= 1 &&
+      data.dailyCount is int && data.dailyCount >= 0 &&
+      data.lifetimeCount is int && data.lifetimeCount >= 0 &&
+      data.streak is int && data.streak >= 0 &&
+      data.lastChantedDate is string && data.lastChantedDate.size() <= 32 &&
+      data.mantraStats is map &&
+      data.history is list &&
+      data.history.size() <= 100;
+    }
+
+    // Match rules for the users collection
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      
+      allow create: if isOwner(userId) && 
+                      isValidId(userId) && 
+                      isValidUser(incoming());
+                      
+      allow update: if isOwner(userId) && 
+                      isValidId(userId) && 
+                      isValidUser(incoming());
+                      
+      allow delete: if isOwner(userId);
+    }
+  }
+}

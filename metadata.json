@@ -1,0 +1,6 @@
+{
+  "name": "NaamSadhana",
+  "description": "A beautiful and modern Progressive Web App for counting daily mantra chanting, designed with a serene saffron, white, and gold theme and secured with Firebase Auth & Firestore.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

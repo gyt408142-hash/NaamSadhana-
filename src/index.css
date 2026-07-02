@@ -1,0 +1,57 @@
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-serif: "Cinzel", Georgia, serif;
+  --font-sans: "Inter", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+  
+  --color-saffron-50: #fff5eb;
+  --color-saffron-100: #ffe4cc;
+  --color-saffron-200: #ffc299;
+  --color-saffron-500: #ff7300;
+  --color-saffron-600: #e65c00;
+  --color-saffron-700: #cc4e00;
+  --color-gold-100: #fbf5db;
+  --color-gold-400: #f1c40f;
+  --color-gold-500: #d4af37;
+  --color-gold-600: #b89326;
+  --color-spiritual-dark: #120d09; /* Warm deep spiritual darkness */
+  --color-spiritual-panel: #1a130e;
+  --color-spiritual-card: #241a13;
+}
+
+@layer base {
+  body {
+    @apply font-sans transition-colors duration-300;
+  }
+}
+
+/* Golden glow animation helper */
+@keyframes goldenGlow {
+  0%, 100% {
+    text-shadow: 0 0 4px rgba(212, 175, 55, 0.4);
+  }
+  50% {
+    text-shadow: 0 0 12px rgba(212, 175, 55, 0.8), 0 0 16px rgba(255, 115, 0, 0.4);
+  }
+}
+
+.golden-glow {
+  animation: goldenGlow 3s infinite ease-in-out;
+}
+
+/* Custom scrollbar for divine listing */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(212, 175, 55, 0.2);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(212, 175, 55, 0.4);
+}

@@ -1,0 +1,92 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Represents a user's chanting profile, progress, statistics, and history.",
+      "type": "object",
+      "properties": {
+        "currentMantra": {
+          "type": "object",
+          "description": "The active mantra selected by the user.",
+          "properties": {
+            "id": { "type": "string" },
+            "name": { "type": "string" },
+            "translation": { "type": "string" },
+            "isCustom": { "type": "boolean" }
+          },
+          "required": ["id", "name"]
+        },
+        "currentCount": {
+          "type": "integer",
+          "description": "Number of chants in the current active session."
+        },
+        "goal": {
+          "type": "integer",
+          "description": "The target number of chants for a session."
+        },
+        "dailyCount": {
+          "type": "integer",
+          "description": "The cumulative count of chants completed today."
+        },
+        "lifetimeCount": {
+          "type": "integer",
+          "description": "The lifetime count of chants completed across all sessions."
+        },
+        "streak": {
+          "type": "integer",
+          "description": "The current consecutive daily chanting streak."
+        },
+        "lastChantedDate": {
+          "type": "string",
+          "description": "The last date the user chanted in YYYY-MM-DD format."
+        },
+        "mantraStats": {
+          "type": "object",
+          "description": "Mapping of mantra ID to individual chanting statistics.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "count": { "type": "integer" },
+              "lastChanted": { "type": "integer" }
+            },
+            "required": ["count", "lastChanted"]
+          }
+        },
+        "history": {
+          "type": "array",
+          "description": "The list of recent chanting sessions.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "mantraId": { "type": "string" },
+              "mantraName": { "type": "string" },
+              "count": { "type": "integer" },
+              "goal": { "type": "integer" },
+              "timestamp": { "type": "integer" },
+              "synced": { "type": "boolean" }
+            },
+            "required": ["id", "mantraId", "mantraName", "count", "goal", "timestamp", "synced"]
+          }
+        }
+      },
+      "required": [
+        "currentMantra",
+        "currentCount",
+        "goal",
+        "dailyCount",
+        "lifetimeCount",
+        "streak",
+        "lastChantedDate",
+        "mantraStats",
+        "history"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Individual user document containing private user statistics and progress."
+    }
+  }
+}
