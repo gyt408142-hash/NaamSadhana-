@@ -34,8 +34,9 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
   }, []);
 
   const isIframe = typeof window !== 'undefined' && window.self !== window.top;
+  const isPreviewIframe = isIframe || (typeof window !== 'undefined' && window.location.hostname.includes('.run.app'));
   const isMobile = typeof window !== 'undefined' && /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-  const useRedirect = isIframe || isMobile;
+  const useRedirect = isMobile;
 
   const handleError = (err: any) => {
     const errCode = err?.code || '';
@@ -121,6 +122,10 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
   };
 
   const handleGoogleSignIn = async () => {
+    if (isPreviewIframe) {
+      setError('Google Sign-In is disabled in AI Studio Preview. Please use Email/Password or Guest login.');
+      return;
+    }
     setError('');
     setLoading(true);
     setPopupBlocked(false);
@@ -169,6 +174,10 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
   };
 
   const handleGoogleRedirectSignIn = async () => {
+    if (isPreviewIframe) {
+      setError('Google Sign-In is disabled in AI Studio Preview. Please use Email/Password or Guest login.');
+      return;
+    }
     setError('');
     setLoading(true);
     setPopupBlocked(false);
@@ -346,34 +355,51 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
         </div>
 
         {/* Popup Blocked Warning Info Card */}
-        {(popupBlocked || (typeof window !== 'undefined' && window.self !== window.top)) && (
+        {(popupBlocked || isPreviewIframe) && (
           <div className="mb-5 p-4 rounded-2xl bg-amber-500/10 dark:bg-amber-950/20 border border-amber-500/20 dark:border-amber-900/40 text-slate-700 dark:text-slate-300 text-xs space-y-2 font-sans">
             <div className="flex gap-2 items-center font-bold text-amber-800 dark:text-gold-400">
               <AlertCircle size={15} className="shrink-0" />
-              <span>Preview Mode Auth Tip</span>
+              <span>{isPreviewIframe ? 'Preview Mode Authentication' : 'Preview Mode Auth Tip'}</span>
             </div>
             <p className="leading-relaxed text-[11px] text-slate-500 dark:text-slate-400">
-              Inside iframes or preview screens, browsers often block Google login popups. Use <strong>Redirect Mode</strong> or open in a new tab.
+              {isPreviewIframe 
+                ? 'Google Login is disabled inside the Google AI Studio preview iframe. Please sign in using Email/Password, or use Guest mode.'
+                : 'Inside iframes or preview screens, browsers often block Google login popups. Use Redirect Mode or open in a new tab.'
+              }
             </p>
-            <div className="flex flex-wrap gap-2 pt-1">
-              <button
-                type="button"
-                onClick={handleGoogleRedirectSignIn}
-                disabled={loading}
-                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-saffron-500 to-amber-500 text-white font-bold text-[10px] hover:from-saffron-600 hover:to-amber-600 transition-all flex items-center gap-1 cursor-pointer"
-              >
-                <ExternalLink size={10} />
-                Redirect Mode
-              </button>
-              <button
-                type="button"
-                onClick={() => window.open(window.location.href, '_blank')}
-                className="px-3 py-1.5 rounded-xl bg-white dark:bg-spiritual-card border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 font-bold text-[10px] hover:bg-slate-50 dark:hover:bg-slate-800 transition-all flex items-center gap-1 cursor-pointer"
-              >
-                <ExternalLink size={10} />
-                Open in New Tab
-              </button>
-            </div>
+            {!isPreviewIframe && (
+              <div className="flex flex-wrap gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={handleGoogleRedirectSignIn}
+                  disabled={loading}
+                  className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-saffron-500 to-amber-500 text-white font-bold text-[10px] hover:from-saffron-600 hover:to-amber-600 transition-all flex items-center gap-1 cursor-pointer"
+                >
+                  <ExternalLink size={10} />
+                  Redirect Mode
+                </button>
+                <button
+                  type="button"
+                  onClick={() => window.open(window.location.href, '_blank')}
+                  className="px-3 py-1.5 rounded-xl bg-white dark:bg-spiritual-card border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 font-bold text-[10px] hover:bg-slate-50 dark:hover:bg-slate-800 transition-all flex items-center gap-1 cursor-pointer"
+                >
+                  <ExternalLink size={10} />
+                  Open in New Tab
+                </button>
+              </div>
+            )}
+            {isPreviewIframe && (
+              <div className="flex flex-wrap gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => window.open(window.location.href, '_blank')}
+                  className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-saffron-500 to-amber-500 text-white font-bold text-[10px] hover:from-saffron-600 hover:to-amber-600 transition-all flex items-center gap-1 cursor-pointer"
+                >
+                  <ExternalLink size={10} />
+                  Open in New Tab to use Google Login
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -383,8 +409,10 @@ export default function AuthScreen({ onSuccess }: AuthScreenProps) {
           <div className="space-y-1">
             <button
               onClick={handleGoogleSignIn}
-              disabled={loading}
-              className="w-full bg-slate-50 hover:bg-slate-100 dark:bg-spiritual-card dark:hover:bg-spiritual-card/80 text-slate-700 dark:text-slate-200 border border-slate-200/60 dark:border-slate-800/80 py-3 rounded-2xl text-xs font-bold flex items-center justify-center gap-2.5 transition-colors cursor-pointer"
+              disabled={loading || isPreviewIframe}
+              className={`w-full bg-slate-50 hover:bg-slate-100 dark:bg-spiritual-card dark:hover:bg-spiritual-card/80 text-slate-700 dark:text-slate-200 border border-slate-200/60 dark:border-slate-800/80 py-3 rounded-2xl text-xs font-bold flex items-center justify-center gap-2.5 transition-colors cursor-pointer ${
+                isPreviewIframe ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
             >
               <svg className="w-4 h-4 animate-bounce" style={{ animationDuration: '3s' }} viewBox="0 0 24 24">
                 <path
