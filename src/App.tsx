@@ -15,6 +15,7 @@ import {
   LogOut,
   RefreshCw
 } from 'lucide-react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import { auth, db, doc, setDoc, getDoc, onAuthStateChanged, signOut, getRedirectResult } from './firebase';
 import Header from './components/Header';
 import AuthScreen from './components/AuthScreen';
@@ -1006,6 +1007,7 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+      <SpeedInsights />
     </div>
   );
 }
