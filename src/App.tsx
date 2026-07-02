@@ -127,6 +127,8 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState(false);
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
+  const [authTimeoutError, setAuthTimeoutError] = useState(false);
 
   // Chanting State
   const [state, setState] = useState<AppState>(getInitialState());
@@ -204,35 +206,56 @@ export default function App() {
       });
   }, []);
 
-  // Monitor Authentication State
+  // Monitor Authentication State & Loading Timer
   useEffect(() => {
+    let active = true;
+
+    // Start 8-second global loading fallback timer
+    const timer = setTimeout(() => {
+      if (active && authLoading) {
+        console.warn('[Auth Timeout] Auth/Data loading is taking more than 8 seconds. Offering manual options to retry or go to login.');
+        setAuthTimeoutError(true);
+      }
+    }, 8000);
+
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      console.log('[Auth Observer] Auth state changed:', currentUser ? `Logged In (UID: ${currentUser.uid}, Provider: ${currentUser.providerId || 'Email/Guest'})` : 'Logged Out');
       try {
+        if (!active) return;
         setUser(currentUser);
         if (currentUser) {
           // Authenticated or guest user
           await loadUserData(currentUser.uid);
         } else {
           // Logged out
+          setIsDataLoaded(false);
           setState(getInitialState());
           // Load fallback local stats if any
           const fallback = localStorage.getItem('naamsadhana_local_fallback');
           if (fallback) {
             try {
               setState(JSON.parse(fallback));
+              console.log('[Auth Observer] Loaded guest fallback counts for signed out state.');
             } catch (e) {
-              console.error('Error loading fallback local state:', e);
+              console.error('[Auth Observer] Error loading fallback local state:', e);
             }
           }
         }
       } catch (err) {
-        console.error('Auth state change observer failed to complete fully:', err);
+        console.error('[Auth Observer Error] Auth state change observer failed to complete fully:', err);
       } finally {
-        setAuthLoading(false);
+        if (active) {
+          setAuthLoading(false);
+          clearTimeout(timer);
+        }
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      active = false;
+      unsubscribe();
+      clearTimeout(timer);
+    };
   }, []);
 
   // Loading User Data from Firestore
@@ -241,16 +264,25 @@ export default function App() {
       setSyncing(true);
       const userRef = doc(db, 'users', uid);
       
+      console.log(`[Firestore Read] Attempting to read existing user document for UID: ${uid}`);
       let docSnap;
       try {
-        docSnap = await getDoc(userRef);
+        // Race the getDoc with a 5s timeout to avoid getting stuck indefinitely
+        docSnap = await Promise.race([
+          getDoc(userRef),
+          new Promise<never>((_, reject) => 
+            setTimeout(() => reject(new Error('Firestore read request timed out after 5 seconds')), 5000)
+          )
+        ]);
       } catch (err) {
+        console.error(`[Firestore Read Error] Error reading user document for UID ${uid}:`, err);
         handleFirestoreError(err, OperationType.GET, `users/${uid}`);
         return;
       }
 
       if (docSnap.exists()) {
         const dbData = docSnap.data() as Partial<AppState>;
+        console.log(`[Firestore Read Success] Retrieved user document for UID ${uid}. Raw DB data:`, dbData);
         
         // Merge DB data with default state structure
         const mergedState: AppState = {
@@ -286,39 +318,58 @@ export default function App() {
         }
 
         setState(mergedState);
+        setIsDataLoaded(true);
         localStorage.setItem(`naamsadhana_state_${uid}`, JSON.stringify(mergedState));
+        console.log(`[Firestore Load Complete] Applied merged states successfully for UID ${uid}.`);
       } else {
+        console.log(`[Firestore Read] User document for UID ${uid} does NOT exist. Initializing fresh profile...`);
         // New user with no database record. Check local storage fallback first.
         const fallback = localStorage.getItem('naamsadhana_local_fallback');
         let initial = getInitialState();
         if (fallback) {
           try {
             initial = JSON.parse(fallback);
-          } catch (e) {}
+            console.log(`[Firestore Init] Found guest fallback state to merge into new profile:`, initial);
+          } catch (e) {
+            console.error('[Firestore Init Error] Failed to parse guest fallback:', e);
+          }
         }
         
-        // Save initial to cloud so it exists
+        // Save initial to cloud so it exists, utilizing merge:true as required
         try {
-          await setDoc(userRef, initial);
+          await setDoc(userRef, initial, { merge: true });
+          console.log(`[Firestore Write Success] Successfully initialized remote profile using merge:true for UID: ${uid}`);
         } catch (err) {
+          console.error(`[Firestore Write Error] Failed to write initial profile data for UID ${uid}:`, err);
           handleFirestoreError(err, OperationType.CREATE, `users/${uid}`);
           return;
         }
         setState(initial);
+        setIsDataLoaded(true);
       }
       setSyncError(false);
     } catch (e) {
-      console.error('Error loading cloud user data:', e);
+      console.error('[Firestore Load Fail] Safe error handling during load user data:', e);
       setSyncError(true);
-      // Load from local storage backup in offline state
+      // Load from local storage backup in offline/error state
       const localBackup = localStorage.getItem(`naamsadhana_state_${uid}`);
       if (localBackup) {
         try {
-          setState(JSON.parse(localBackup));
-        } catch (err) {}
+          const parsed = JSON.parse(localBackup);
+          setState(parsed);
+          setIsDataLoaded(true);
+          console.log('[Local Restore Success] Successfully restored user state from offline local backup.');
+        } catch (err) {
+          console.error('[Local Restore Error] Failed to parse offline local backup state:', err);
+        }
+      } else {
+        // If no backup exists, use initial state to allow immediate usage
+        setState(getInitialState());
+        setIsDataLoaded(true);
       }
     } finally {
       setSyncing(false);
+      setAuthLoading(false); // Always stop loading in finally block
     }
   };
 
@@ -333,6 +384,12 @@ export default function App() {
 
     if (!user) return; // No cloud sync for signed-out state
 
+    // Write-locking safeguard: do not write to cloud if the remote data has not been loaded successfully
+    if (!isDataLoaded) {
+      console.warn('[Cloud Sync Blocked] Firestore write aborted because initial user data hasn\'t loaded yet.');
+      return;
+    }
+
     // Clear previous timeout
     if (syncTimeoutRef.current) {
       clearTimeout(syncTimeoutRef.current);
@@ -344,12 +401,13 @@ export default function App() {
         setSyncing(true);
         const userRef = doc(db, 'users', user.uid);
         await setDoc(userRef, updatedState);
+        console.log(`[Firestore Sync Success] Wrote updated stats to users/${user.uid}`);
         setSyncError(false);
       } catch (err) {
-        console.error('Firestore autosync failed (offline likely):', err);
+        console.error('[Firestore Sync Error] Autosync write failed:', err);
         setSyncError(true);
         try {
-          handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}`);
+          handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}`);
         } catch (syncErr) {
           // Logged inside helper, catch here to prevent uncaught promise rejection crash in background thread
         }
@@ -443,6 +501,7 @@ export default function App() {
       setShowLogoutModal(false);
       await signOut(auth);
       // Clear states
+      setIsDataLoaded(false);
       setState(getInitialState());
       setUser(null);
       triggerSuccessFeedback("Logged out successfully.");
@@ -498,11 +557,46 @@ export default function App() {
   if (authLoading) {
     return (
       <div className="min-h-screen bg-spiritual-dark flex items-center justify-center text-gold-500">
-        <div className="text-center space-y-4">
+        <div className="text-center space-y-4 max-w-sm px-6">
           <div className="h-10 w-10 border-4 border-gold-500 border-t-transparent rounded-full animate-spin mx-auto" />
           <p className="text-sm font-serif uppercase tracking-widest golden-glow">
             Loading NaamSadhana...
           </p>
+          
+          {authTimeoutError && (
+            <div className="mt-8 p-5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-slate-350 text-xs space-y-4 animate-fade-in">
+              <p className="leading-relaxed text-[11px]">
+                It's taking longer than usual to connect. You can retry establishing the connection, or proceed directly to the login / guest mode.
+              </p>
+              <div className="flex gap-3 justify-center pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    console.log('[Timeout Retry] Manually retrying load user data...');
+                    setAuthTimeoutError(false);
+                    if (auth.currentUser) {
+                      loadUserData(auth.currentUser.uid);
+                    } else {
+                      setAuthLoading(false);
+                    }
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-saffron-500 to-amber-500 text-white font-bold text-[11px] hover:from-saffron-600 hover:to-amber-600 transition-all cursor-pointer shadow-md"
+                >
+                  Retry Connection
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    console.log('[Timeout Skip] Skipping load screen, forcing login interface.');
+                    setAuthLoading(false);
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl bg-white/10 text-slate-200 font-bold text-[11px] hover:bg-white/20 transition-all border border-white/10 cursor-pointer"
+                >
+                  Go to Login
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
